@@ -1,0 +1,279 @@
+#!/bin/bash
+# 
+# Purpose:
+#  XBPS build package(s) from within a fresh build env for each.
+#  loop on each cross-build env available.
+#
+# XXX logfile: log/<timestamp>/<pkg>... instead ?
+#
+# XXX if x86_64 produces *noarch* package libsearpc-codegen, rindex is updated for x86_64.
+#     Then on armv7hf builds, the same noarch package is (re)generated.
+#     The rindex of armv7l is updated, but the rindex of x86_84 is then out of date: 
+#     still references the *old* noarch package ...
+#     => need separate hostdir for each target arch 
+#
+# XXX take control of hostdir since binary-bootstrap fails a lot with other masterdir(s) 
+#     and/or while installing cross-build tools ?
+#     Yes: mix noarch packages from distinct repos into the same location in hostdir/repocache/
+#     ... layout should be hostdir/repocache/<target_arch>-<libc_flavor>/ instead
+#     => temp workaround: delete hostdir/repocache/
+# 
+# XXX 'xbps-query -x <pkg>' returns 2 and not 0 if pkg has no deps (like -doc packages)
+#     see https://github.com/voidlinux/xbps/issues/173
+# 
+# About cross-building: depending on native arch and target arch, commands are differents:
+#
+#     - if same processor arch, we can use a "native" bootstrap:
+#       $ ./xbps-src binary-bootstrap x86_64-musl # same arch but different libc
+#       $ ./xbps-src pkg                          # no other args ?
+#
+#     - if cross-arch (like target=armv7hf), have to be different:
+#       $ ./xbps-src binary-bootstrap    # native arch for tools: no platform target
+#       $ ./xbps-src -a armv7hf pkg .... # require cross-build via -a flag
+#
+#     - example: .travis.yml
+#
+# 
+# Changelog:
+#
+# 2017-10-24  example of monitoring log files on massive build
+# 2017-10-21  xbps.info file: prefix each part with its description
+# 2017-09-30  compute requested package (at least)
+# 2017-09-01  fix "cross-build" if processor arch of platform is same than target one.
+# 2017-09-01  also support '--help' argument
+# 2017-05-10  fix multiple builds (binary-bootstrap wrong arg)
+# 2017-04-16  log filename: remove '-a' too
+# 2017-04-16  cross-build: fix xbps-query too
+# 2017-04-16  cross-build: it works now
+# 2017-02-16  xbps-src args HAVE TO be quoted. Notice it in usage()
+# 2017-02-09  cosmetic on usage() output
+# 2017-02-09  check presence of ./xbps-src and ./srcpkgs/
+# 2016-06-09  help on binary-bootstrap
+# 2016-06-03  s/--repo=/--repository/ to xbps-* commands !
+# 2016-05-30  fix build order (and needs) by the use of "xbps-src sort-dependencies" functionality
+# 2016-05-23  start work with a fresh (new) mastedir: avoid a lot of transient problems if weird state.
+# 2016-05-23  fix cross-build: propagate '-a <arch>' options to most of xbps-src commands.
+# 2016-05-03  do not quit if no deps for a package (xbps-query -x)
+#             see https://github.com/voidlinux/xbps/issues/173
+# 2016-04-28  fix examples on binary-boostrap, various TODO items added.
+# 2016-04-15  also list info about subpackage(s)
+# 2016-04-15  changed timestamp format for logfile: avoid ":" in log's filename
+# 2015-12-04  fixed XBPS info on built package.
+# 2015-12-04  fix some usages of xbps-src without '-a <arch>' options.
+# 2015-12-04  no more cross-build stuff, xbps-src args from command line
+# 2015-12-04  added online help and dry mode.
+# 2015-12-04  retrieve package list from git is none is provided
+# 2015-12-04  order package build list with build/dep order.
+# 2015-12-04  -- major rewrite with the help of xbulk.
+# 2015-11-30  added cross-build stuff
+# 2015-09-27  added TimeStamp to logfilename
+# 2015-09-27  use pkglist from command-line too
+# 2015-09-27  no need to uninstall packages once built (-C option),
+#             since buildir is scratched after ("zap" command).
+
+usage() {
+cat << EOFusage
+
+XBPS bulk builder using a cleaned masterdir for each package build
+
+Usage:
+
+  $0 [-n] [-h] [xbps-src-flags] [PKG1 PKG2 ...]
+
+  -n              dry run
+  -h              this help
+  xbps-src-flags  QUOTE THEM if any (like '-a <arch> [-m <dir>] ...')
+  PKG1 PKG2 ...   list of package(s) to build. Retrieve from git if not provided.
+
+  Each package is built one by one in an cleaned masterdir,
+  masterdir is created if not exist,
+  xbps-src options '-C' and '-f' are already in use by this script,
+  Packages are built with the right build dependency order,
+  If package list is empty, use "git diff master ..." output to retrieve them.
+  Build output and package(s) infos are generated in a timestamped log files (./log/ folder)
+
+  Don't perform native and cross build with the same hostdir/repocache/ folder
+
+  Examples:
+
+    * cross-build librsync for armv7hf:
+      $0 '-a armv7hf' librsync
+
+    * cross-build all packages in dev for x86_64-musl: 
+      $0 '-a x86_64-musl'
+
+    * check output on massive builds in the mean time:
+      $ watch -n 5 "ls -1tr */*.log | tail -n 3 | xargs du -sk && echo && ls -1tr */*.log | tail -n 1 | xargs tail"
+EOFusage
+}
+
+exec_or_dry() {
+  # $1: command to execute
+  # $2: if set, do not exit
+  if [ "$DRY" = 1 ]; then
+    echo "# dry cmd: $1"
+    return 0
+  fi
+  echo "# cmd: $1"
+  eval "$1"
+  if [ $? -ne 0 ]; then
+    echo "# ERROR on cmd."
+    if  [ -z "$2" ]; then
+      echo "# exiting requested: stop here"
+      exit 1
+    fi
+  fi
+}
+
+## Initialization
+DRY=
+XBPSSRCARGS=
+
+PKGS=
+ts="$(date '+%Y-%m-%d_%H%M%S')"
+
+if ! ( [ -x "./xbps-src" ] || [ -d "./srcpkgs" ] ); then
+  echo "[ERROR] missing ./xbps-src or ./srcpkgs folder: wrong directory ?"
+  exit 1
+fi
+
+[ ! -d "log" ] && (echo "creating log/ ..." ; mkdir log )
+
+## read command-line args
+for pkg; do
+	case $pkg in
+		-n) DRY=1 ;;
+		-h|--help) usage && exit 0 ;;
+		-*) XBPSSRCARGS="$XBPSSRCARGS $pkg";;
+		*) PKGS="$PKGS $pkg"
+	esac
+done
+
+# strip leading ' '
+XBPSSRCARGS="${XBPSSRCARGS# }"
+
+echo
+echo "# input xbps-src arguments: '$XBPSSRCARGS'"
+
+# split: $XBPSSRCARGS == $XBPSSRCNOCP -a $XBPSSRCCP
+#   XBPSSRCARGS: command-line arguments for xbps-src
+#   ARCHARG    : flag to indicate next arg is the '-a' <arch> (from '-a <arch>')
+#   XBPSSRCCP  : cross-profile to use (from '-a <arch>')
+#   XBPSSRCNOCP: XBPSSRCARGS without cross-profile arg (without '-a <arch>').
+#   BINBOOTSTRAP_ARG: the target arch for xbps-src binary-bootstrap operation. 
+#                       provides it only if target arch is different from native arch.
+#   XBPSSRCPKGARG:  for use in "xbps-src $XBPSSRCPKGARG pkg" (take care of platform/target arch)
+#   
+
+XBPSSRCNOCP=
+XBPSSRCCP=
+ARCHARG=no
+BINBOOTSTRAP_ARG=
+XBPSSRCPKGARG="$XBPSSRCARGS"
+for o in $XBPSSRCARGS; do
+   if [ "$o" = "-a" ]; then
+     ARCHARG=yes
+   else
+     if [ "$ARCHARG" = "yes" ]; then
+       XBPSSRCCP=$o
+       ARCHARG=no
+     else
+        XBPSSRCNOCP="$XBPSSRCNOCP $o"
+     fi
+   fi
+done
+echo $XBPSSRCCP | grep $(uname -m)  -q
+if [ $? -eq 0 ] 
+then
+    BINBOOTSTRAP_ARG="$XBPSSRCCP"
+    XBPSSRCPKGARG="$XBPSSRCNOCP"
+fi
+
+echo "# implied binary boostrap argument: $BINBOOTSTRAP_ARG"
+
+## first, let's have a clean master dir
+echo # start with a fresh masterdir ..."
+exec_or_dry "./xbps-src $XBPSSRCNOCP zap > /dev/null"
+exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $BINBOOTSTRAP_ARG > /dev/null"
+
+## retrieve XBPS_TARGET_ARCH value. 
+## XXX any side-effect for other commands below ?
+[ -n "$XBPSSRCCP" ] && . common/cross-profiles/${XBPSSRCCP}.sh
+
+## retrieve local repository to store built packages
+REPO=$( ./xbps-src $XBPSSRCARGS show-var XBPS_REPOSITORY | grep -v '^=>')
+
+## if no package list provided, compute it from git against the master branch
+if [ "$PKGS" = "" ]; then
+  echo "# input: no package given: retrieve a list from git..."
+  PKGS=$(git diff master --name-only --diff-filter=AM | 
+              grep -F "/template" | 
+              sed -e 's,srcpkgs/\(.*\)/template,\1,' |
+              tr '\n' ' ')
+fi
+echo "# package(s) to consider: $PKGS"
+
+echo "# compute package build order and other needed package builds..."
+PKGSU=
+for dep in $(./xbps-src $XBPSSRCARGS sort-dependencies $PKGS |
+             sed '1d;s|[<>].*$||g'); do
+		PKGSU="$PKGSU $dep"
+		#echo "[dbg] dep=$dep PKGSU=$PKGSU"
+done
+
+# if nothing found, let's work on what is requested
+[ "$PKGSU" = "" ] && PKGSU="$PKGS"
+
+echo "# list of package(s) to build sorted in build order: $PKGSU"
+
+
+## main stuff: loop on each package to build
+
+need_fresh_build=0
+
+archsuffix="${XBPSSRCARGS// /.}"
+archsuffix="${archsuffix#-a}"
+
+for pkg in $PKGSU; do
+    echo
+    logf="log/$ts.$pkg${archsuffix}.log"
+
+    # no need of zap & binary-bootstrap for the first package (already done)
+    if [ $need_fresh_build -eq 0 ]; then
+      # will do on next package build
+      need_fresh_build=1
+    else
+      echo "# [$pkg] clean buildenv and do binary-bootstrap ..."
+      exec_or_dry "./xbps-src $XBPSSRCNOCP zap > /dev/null"
+      exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $BINBOOTSTRAP_ARG > /dev/null"
+    fi
+
+    echo "# [$pkg] let's build ..."
+    echo "# [$pkg] logfile: $logf ..."
+    exec_or_dry "./xbps-src $XBPSSRCPKGARG -f -C pkg $pkg 2>&1 > $logf"
+
+    # subpackages of $pkg
+    spkg=$(find srcpkgs -type l -lname $pkg | sed -e 's,srcpkgs/,,')
+    echo "# [$pkg] subpackages: $spkg"
+
+    for p in $pkg $spkg; do
+      xbinfo="log/$ts.$p${archsuffix}.xbps.info"
+
+      echo "#"
+      echo "# [$p] XBPS infos into logfile: $xbinfo ..."
+      XBPSQ="xbps-query -R -i --repository=$REPO"
+      [ -n "$XBPS_TARGET_MACHINE" ] && XBPSQ="XBPS_TARGET_ARCH=$XBPS_TARGET_MACHINE $XBPSQ"
+
+      echo "# package information:" >> $xbinfo
+      exec_or_dry "$XBPSQ -S $p >> $xbinfo"
+
+      echo "# package dependencies:" >> $xbinfo
+      # XXX return 2 and not 0 if no deps
+      exec_or_dry "$XBPSQ -x $p >> $xbinfo" no_exit
+
+      echo "# package files:" >> $xbinfo
+      exec_or_dry "$XBPSQ -f $p | sort >> $xbinfo"
+    done
+done
+
+echo "# That's all folks !"
