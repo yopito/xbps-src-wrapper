@@ -1,17 +1,42 @@
+`build.scratch` is a wrapper on top of `xbps-src` to ease packaging for VoidLinux distribution: find which package(s) to build, manage cross-build, generate log file and binary package details in file.
+
+More details:
+
+* ease the use of `xbps-src`: 
+  * manage calls of `binary-bootstrap` and `zap`
+  * make cross-build easier : handle the `'-a <target-arch>` argument of `xbps-src`
+
+* each package is built in a **fresh build environnement**.  
+  This helps on tracking dependencies, since build environnement is not polluted by a previous build,
+
+* list package(s) to build is taken from command-line or retrieved with the changes between `master` and current git branch
+
+* generate timestamped log and info file, that helps to compare old/new builds:
+  * `log/<date>.<pkgname>.log`: `xbps-src` build log of the package,
+  * `log/<date>.<pkgname>.xbps.info`: various package info in the same file: package metadata, what is provides, its dependencies, list of its files. Some of these outputs are sorted to make comparison accross files easier.
+
+
+Cons and workarounds:
+
+* increase build time since **each** package build is performed within a new masterdir and builds restart from scratch. The use of a SSD drive with good IOPS greatly helps, usage of `ccache` by `xbps-src` dramatically reduces build time.
+
+* some weird bugs on cross-build that requires native (re)build of packages. Not related to this script, but the way `xbps-src` handles storage of built noarch packages and share in the same location the rindex of various arch(es).
+
+
 ## Usage
 
-Copy `rebuild.scratch` in the same dir than `xbps-src` and make it executable:
+Copy `build.scratch` in the same dir than `xbps-src` and make it executable:
 
 ```
-$ chmod +x ./rebuild.scratch
-$ ./rebuild.scratch -h
+$ chmod +x ./build.scratch
+$ ./build.scratch -h
 ```
 ```
 XBPS bulk builder using a cleaned masterdir for each package build
 
 Usage:
 
-  ./rebuild.scratch [-n] [-h] [xbps-src-flags] [PKG1 PKG2 ...]
+  ./build.scratch [-n] [-h] [xbps-src-flags] [PKG1 PKG2 ...]
 
   -n              dry run
   -h              this help
@@ -30,51 +55,23 @@ Usage:
   Examples:
 
     * cross-build librsync for armv7hf:
-      ./rebuild.scratch '-a armv7hf' librsync
+      ./build.scratch '-a armv7hf' librsync
 
     * cross-build all packages in dev for x86_64-musl: 
-      ./rebuild.scratch '-a x86_64-musl'
+      ./build.scratch '-a x86_64-musl'
 
     * check output on massive builds in the mean time:
       $ watch -n 5 "ls -1tr */*.log | tail -n 3 | xargs du -sk && echo && ls -1tr */*.log | tail -n 1 | xargs tail"
 ```
 
 
-## Rationale
-
-`rebuild.scratch` is my personal wrapper on top of `xbps-src` to ease my packaging effort for VoidLinux distribution.
-
-* each package to consider is built **one by one**, each in a new build environnement. This helps to track the real dependencies for each package (instead of benefit of packages unmentionned but aldready present because of a previous build)
-
-* without argument: build each package that have changed between the `master` and your current git branch
-
-* ease the use of `xbps-src`: 
-  * manage calls of `binary-bootstrap` and `zap`
-  * make cross-build easier : handle the `'-a <target-arch>` argument of `xbps-src`
-
-* generate timestamped log and info file, that make easier to compare old/new builds:
-  * log of xbps-src build
-  * an xbps.info file for each built package containing various packages informations: package metada, what it's providing, its dependencies, the list of its files.  
-      Some of these outputs are sorted to make the comparison easier
-
-
-## Cons and workarounds
-
-Since **each** package build is performed within a cleaned env (new masterdir), it takes a little bit longer: the build environnement has to be recreated first.
-
-Workarounds:
-* use a fast hard drive with more I/O like SSD drive
-* enable use of `ccache` by `xbps-src`
-
-The shell code is somewhat dirty ?
-
 ## Usage example
 
-Let's rebuild `kdevelop` and `kdevplatform` for both the native arch/libc and for `aarch64-musl` crossbuild target platform; excerpt of the corresponding generated files is present in `samples/` dir of this repo.
+Let's rebuild `kdevelop` and `kdevplatform` for both the native arch/libc and for `aarch64-musl` crossbuild target platform:
 
 ```
-$ ./rebuild.scratch kdevplatform kdevelop \
-  && ./rebuild.scratch '-a aarch64-musl' kdevplatform kdevelop
+$ ./build.scratch kdevplatform kdevelop \
+  && ./build.scratch '-a aarch64-musl' kdevplatform kdevelop
 ```
 
 This outputs:
@@ -130,7 +127,7 @@ ERROR: [reposync] failed to fetch file `https://repo.voidlinux.eu/current/aarch6
 # That's all folks !
 ```
 
-The output for the 2nd call (command `./rebuild.scratch '-a aarch64-musl' kdevplatform kdevelop`) :
+The output for the 2nd call (command `./build.scratch '-a aarch64-musl' kdevplatform kdevelop`) :
 ```
 
 # input xbps-src arguments: '-a aarch64-musl'
@@ -157,4 +154,64 @@ ERROR: [reposync] failed to fetch file `https://repo.voidlinux.eu/current/nonfre
 => ERROR: python-gobject-devel-3.26.1_1: cannot be cross compiled, exiting...
 # ERROR on cmd.
 # exiting requested: stop here
+```
+
+(Excerpt of) content of `log/2017-11-17_092026.kdevelop.xbps.info`; various parts are separated with "`# <description>`":
+
+```
+# package information:
+architecture: x86_64
+build-date: 2017-11-17 09:33 CET
+filename-sha256: 1a44fe74c1606e0258f4de0e7936ee344519ee3ff82f930b45943f61c58d947e
+filename-size: 5175KB
+homepage: https://www.kdevelop.org/
+installed_size: 13MB
+license: GPL-3
+maintainer: yopito <pierre.bourgin@free.fr>
+pkgver: kdevelop-4.7.3_2
+repository: /build/packages/hostdir/binpkgs/kdevelop-5.2.0
+shlib-provides:
+	libkdev4cpprpp.so
+	libkdev4cppduchain.so
+	libkdev4cppparser.so
+...
+	libkdevcompilerprovider.so
+shlib-requires:
+	libkdevplatformutil.so.8
+	libkdevplatforminterfaces.so.8
+	libkdeui.so.5
+...
+	libkdeclarative.so.5
+short_desc: Integrated Development Environment for C++/C
+# package dependencies:
+konsole>=0
+kate>=0
+kde-runtime>=0
+kdevplatform>=1.7.3_1
+kdelibs>=4.13.3_1
+qt>=4.5.3_1
+libstdc++>=4.4.0_1
+glibc>=2.25_1
+qjson>=0.8.1_1
+qt-webkit>=2.3.4_1
+kde-workspace>=4.10.4_1
+libgcc>=4.4.0_1
+okteta>=4.14.2_1
+# package files:
+/usr/bin/kdevelop
+/usr/bin/kdevelop!
+/usr/include/kdevelop/make/imakebuilder.h
+/usr/lib/kde4/kcm_kdev_cmakebuilder.so
+/usr/lib/kde4/kcm_kdev_makebuilder.so
+/usr/lib/kde4/kcm_kdev_ninjabuilder.so
+/usr/lib/kde4/kcm_kdevcmake_settings.so
+/usr/lib/kde4/kcm_kdevcustombuildsystem.so
+/usr/lib/kde4/kcm_kdevcustomdefinesandincludes.so
+/usr/lib/kde4/kdevastyle.so
+/usr/lib/kde4/kdevcmakebuilder.so
+/usr/lib/kde4/kdevcmakedocumentation.so
+/usr/lib/kde4/kdevcmakemanager.so
+...
+/usr/share/locale/zh_TW/LC_MESSAGES/plasma_runner_kdevelopsessions.mo
+/usr/share/mime/packages/kdevelop.xml
 ```
