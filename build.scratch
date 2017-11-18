@@ -2,26 +2,33 @@
 # 
 # Purpose:
 #  XBPS build package(s) from within a fresh build env for each.
-#  loop on each cross-build env available.
+#  handle cross-build.
 #
-# XXX logfile: log/<timestamp>/<pkg>... instead ?
+# XXX logfile: use log/<timestamp>/<pkg>... instead ?
 #
-# XXX if x86_64 produces *noarch* package libsearpc-codegen, rindex is updated for x86_64.
-#     Then on armv7hf builds, the same noarch package is (re)generated.
-#     The rindex of armv7l is updated, but the rindex of x86_84 is then out of date: 
-#     still references the *old* noarch package ...
-#     => need separate hostdir for each target arch 
+# XXX workflow is broken on noarch packages and cascaded builds 
+#     like cross-build that requests native builds
+#     Example:
+#       if x86_64 produces *noarch* package libsearpc-codegen, rindex is updated for x86_64.
+#       Then on armv7hf builds, the same noarch package is (re)generated.
+#       Then rindex of armv7l is updated, so rindex of x86_84 becomes out of date: 
+#       still references the *old* noarch package.
+#       Becomes a mess if this package is required subsequently (native arch)
+#     => catch this particular case and update rindex instead of building ?
+#     => use separate hostdir for each target arch ?
+#        with symetric layouts like hostdir/repocache/<target_arch>-<libc_flavor>/ instead ?
 #
-# XXX take control of hostdir since binary-bootstrap fails a lot with other masterdir(s) 
-#     and/or while installing cross-build tools ?
-#     Yes: mix noarch packages from distinct repos into the same location in hostdir/repocache/
+# XXX take control of hostdir since binary-bootstrap may fail with other masterdir(s) 
+#     or while installing cross-build tools ?
+#     Because mixing noarch packages from distinct repo flavor into the same location
+#     hostdir/repocache/ is somewhat stange (see previous point)
 #     ... layout should be hostdir/repocache/<target_arch>-<libc_flavor>/ instead
 #     => temp workaround: delete hostdir/repocache/
 # 
 # XXX 'xbps-query -x <pkg>' returns 2 and not 0 if pkg has no deps (like -doc packages)
 #     see https://github.com/voidlinux/xbps/issues/173
 # 
-# About cross-building: depending on native arch and target arch, commands are differents:
+# About cross-building: start is different on native arch and target arch:
 #
 #     - if same processor arch, we can use a "native" bootstrap:
 #       $ ./xbps-src binary-bootstrap x86_64-musl # same arch but different libc
@@ -32,44 +39,6 @@
 #       $ ./xbps-src -a armv7hf pkg .... # require cross-build via -a flag
 #
 #     - example: .travis.yml
-#
-# 
-# Changelog:
-#
-# 2017-10-24  example of monitoring log files on massive build
-# 2017-10-21  xbps.info file: prefix each part with its description
-# 2017-09-30  compute requested package (at least)
-# 2017-09-01  fix "cross-build" if processor arch of platform is same than target one.
-# 2017-09-01  also support '--help' argument
-# 2017-05-10  fix multiple builds (binary-bootstrap wrong arg)
-# 2017-04-16  log filename: remove '-a' too
-# 2017-04-16  cross-build: fix xbps-query too
-# 2017-04-16  cross-build: it works now
-# 2017-02-16  xbps-src args HAVE TO be quoted. Notice it in usage()
-# 2017-02-09  cosmetic on usage() output
-# 2017-02-09  check presence of ./xbps-src and ./srcpkgs/
-# 2016-06-09  help on binary-bootstrap
-# 2016-06-03  s/--repo=/--repository/ to xbps-* commands !
-# 2016-05-30  fix build order (and needs) by the use of "xbps-src sort-dependencies" functionality
-# 2016-05-23  start work with a fresh (new) mastedir: avoid a lot of transient problems if weird state.
-# 2016-05-23  fix cross-build: propagate '-a <arch>' options to most of xbps-src commands.
-# 2016-05-03  do not quit if no deps for a package (xbps-query -x)
-#             see https://github.com/voidlinux/xbps/issues/173
-# 2016-04-28  fix examples on binary-boostrap, various TODO items added.
-# 2016-04-15  also list info about subpackage(s)
-# 2016-04-15  changed timestamp format for logfile: avoid ":" in log's filename
-# 2015-12-04  fixed XBPS info on built package.
-# 2015-12-04  fix some usages of xbps-src without '-a <arch>' options.
-# 2015-12-04  no more cross-build stuff, xbps-src args from command line
-# 2015-12-04  added online help and dry mode.
-# 2015-12-04  retrieve package list from git is none is provided
-# 2015-12-04  order package build list with build/dep order.
-# 2015-12-04  -- major rewrite with the help of xbulk.
-# 2015-11-30  added cross-build stuff
-# 2015-09-27  added TimeStamp to logfilename
-# 2015-09-27  use pkglist from command-line too
-# 2015-09-27  no need to uninstall packages once built (-C option),
-#             since buildir is scratched after ("zap" command).
 
 usage() {
 cat << EOFusage
@@ -109,7 +78,7 @@ EOFusage
 
 exec_or_dry() {
   # $1: command to execute
-  # $2: if set, do not exit
+  # $2: do not exit if set and command returns != 0
   if [ "$DRY" = 1 ]; then
     echo "# dry cmd: $1"
     return 0
@@ -224,7 +193,7 @@ done
 # if nothing found, let's work on what is requested
 [ "$PKGSU" = "" ] && PKGSU="$PKGS"
 
-echo "# list of package(s) to build sorted in build order: $PKGSU"
+echo "# package(s) to build (build ordered): $PKGSU"
 
 
 ## main stuff: loop on each package to build
