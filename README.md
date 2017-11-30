@@ -28,6 +28,8 @@ Cons and workarounds:
 Copy `build.scratch` in the same dir than `xbps-src` and make it executable:
 
 ```
+$ cd void-packages
+$ wget https://raw.githubusercontent.com/yopito/xbps-src-wrapper/master/build.scratch
 $ chmod +x ./build.scratch
 $ ./build.scratch -h
 ```
