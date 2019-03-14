@@ -6,7 +6,19 @@
 #
 # XXX logfile: use log/<timestamp>/<pkg>... instead ?
 #
-# XXX workflow is broken on noarch packages and cascaded builds 
+# XXX offline: '-N' option of xbps-src usefull ? not (yet)
+#     Example:
+#       $ ./build.scratch '-N' burp2-server
+#       # input xbps-src arguments: '-N'
+#       # implied binary boostrap argument:
+#       # cmd: ./xbps-src  -N zap > /dev/null
+#       # cmd: ./xbps-src  -N binary-bootstrap  > /dev/null
+#       Unable to locate 'base-chroot' in repository pool.
+#       => ERROR: Failed to install bootstrap packages!
+#       # ERROR on cmd.
+#       # exiting requested: stop here
+#
+# XXX workflow is broken on noarch packages and cascaded builds
 #     like cross-build that requests native builds
 #     Example:
 #       if x86_64 produces *noarch* package libsearpc-codegen, rindex is updated for x86_64.
@@ -236,11 +248,11 @@ for pkg in $PKGSU; do
       echo "# package information:" >> $xbinfo
       exec_or_dry "$XBPSQ -S $p >> $xbinfo"
 
-      echo "# package dependencies:" >> $xbinfo
+      echo "# package dependencies (sorted):" >> $xbinfo
       # XXX return 2 and not 0 if no deps
-      exec_or_dry "$XBPSQ -x $p >> $xbinfo" no_exit
+      exec_or_dry "$XBPSQ -x $p | sort >> $xbinfo" no_exit
 
-      echo "# package files:" >> $xbinfo
+      echo "# package files (sorted):" >> $xbinfo
       exec_or_dry "$XBPSQ -f $p | sort >> $xbinfo"
     done
 done
