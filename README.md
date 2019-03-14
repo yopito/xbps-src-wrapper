@@ -2,6 +2,8 @@
 *Contents*
 * [build.scratch](#build.scratch)
 * [pkg-check-arch.sh](#pkg-check-arch.sh)
+* [pkg-find-orphan.sh](#pkg-find-orphan.sh)
+
 
 <a id="build.scratch"></a>
 ## build.scratch
@@ -31,7 +33,7 @@ Cons and workarounds:
 * some weird bugs on cross-build that requires native (re)build of packages. Not related to this script, but the way `xbps-src` handles storage of built noarch packages and share in the same location the rindex of various arch(es).
 
 
-## Usage
+### Usage
 
 Copy `build.scratch` in the same dir than `xbps-src` and make it executable:
 
@@ -75,7 +77,7 @@ Usage:
 ```
 
 
-## Usage example
+### Usage example
 
 Let's rebuild `kdevelop` and `kdevplatform` for both the native arch/libc and for `aarch64-musl` crossbuild target platform:
 
@@ -239,4 +241,10 @@ __Example__: check that packages whose name start with `perl-` have the correct 
     ```
     $ ./pkg-check-arch.sh '^perl-.*-'"
     ```
+
+
+<a id="pkg-find-orphan.sh"></a>
+## pkg-find-orphan.sh
+
+WIP: check that packages registrered in remote repo have a template
 
