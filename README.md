@@ -1,3 +1,10 @@
+
+*Contents*
+* [build.scratch](#build.scratch)
+
+<a id="build.scratch"></a>
+## build.scratch
+
 `build.scratch` is a wrapper on top of `xbps-src` to ease packaging for VoidLinux distribution: find which package(s) to build, manage cross-build, generate log file and binary package details in file.
 
 More details:
@@ -29,7 +36,7 @@ Copy `build.scratch` in the same dir than `xbps-src` and make it executable:
 
 ```
 $ cd void-packages
-$ wget https://raw.githubusercontent.com/yopito/xbps-src-wrapper/master/build.scratch
+$ wget https://raw.githubusercontent.com/yopito/yopito-xbps-tools/master/build.scratch
 $ chmod +x ./build.scratch
 $ ./build.scratch -h
 ```
