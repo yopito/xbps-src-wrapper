@@ -1,6 +1,7 @@
 
 *Contents*
 * [build.scratch](#build.scratch)
+* [pkg-check-arch.sh](#pkg-check-arch.sh)
 
 <a id="build.scratch"></a>
 ## build.scratch
@@ -224,3 +225,18 @@ okteta>=4.14.2_1
 /usr/share/locale/zh_TW/LC_MESSAGES/plasma_runner_kdevelopsessions.mo
 /usr/share/mime/packages/kdevelop.xml
 ```
+
+<a id="pkg-check-arch.sh"></a>
+## pkg-check-arch.sh
+
+Check that `arch` of binary package(s) is correct or if "noarch" might be a better idea. Achieved with inspection of all file of the package with `file` utility.
+
+WARNING: all package(s) will be fully downloaded from repo.
+
+Initially written to check perl packages.
+
+__Example__: check that packages whose name start with `perl-` have the correct arch:
+    ```
+    $ ./pkg-check-arch.sh '^perl-.*-'"
+    ```
+
