@@ -10,60 +10,60 @@
 # XXX git: path to git repo as option
 
 # list of URLs repo (that contains -repodata file):
-#   https://repo.voidlinux.eu/current/
-#   https://repo.voidlinux.eu/current/nonfree/
-#   https://repo.voidlinux.eu/current/multilib/
-#   https://repo.voidlinux.eu/current/multilib/nonfree/
-#   https://repo.voidlinux.eu/current/aarch64/
-#   https://repo.voidlinux.eu/current/aarch64/nonfree/
-#   https://repo.voidlinux.eu/current/musl/
-#   https://repo.voidlinux.eu/current/musl/nonfree/
-#   https://repo.voidlinux.eu/current/musl/debug/
-#   https://repo.voidlinux.eu/current/debug/
+#   https://repo.voidlinux.org/current/
+#   https://repo.voidlinux.org/current/nonfree/
+#   https://repo.voidlinux.org/current/multilib/
+#   https://repo.voidlinux.org/current/multilib/nonfree/
+#   https://repo.voidlinux.org/current/aarch64/
+#   https://repo.voidlinux.org/current/aarch64/nonfree/
+#   https://repo.voidlinux.org/current/musl/
+#   https://repo.voidlinux.org/current/musl/nonfree/
+#   https://repo.voidlinux.org/current/musl/debug/
+#   https://repo.voidlinux.org/current/debug/
 #
 #
 # list of repo "databases":
-#   https://repo.voidlinux.eu/current/armv6l-repodata
-#   https://repo.voidlinux.eu/current/armv7l-repodata
-#   https://repo.voidlinux.eu/current/i686-repodata
-#   https://repo.voidlinux.eu/current/x86_64-repodata
+#   https://repo.voidlinux.org/current/armv6l-repodata
+#   https://repo.voidlinux.org/current/armv7l-repodata
+#   https://repo.voidlinux.org/current/i686-repodata
+#   https://repo.voidlinux.org/current/x86_64-repodata
 #
-#   https://repo.voidlinux.eu/current/nonfree/armv6l-repodata
-#   https://repo.voidlinux.eu/current/nonfree/armv7l-repodata
-#   https://repo.voidlinux.eu/current/nonfree/i686-repodata
-#   https://repo.voidlinux.eu/current/nonfree/x86_64-repodata
+#   https://repo.voidlinux.org/current/nonfree/armv6l-repodata
+#   https://repo.voidlinux.org/current/nonfree/armv7l-repodata
+#   https://repo.voidlinux.org/current/nonfree/i686-repodata
+#   https://repo.voidlinux.org/current/nonfree/x86_64-repodata
 #
-#   https://repo.voidlinux.eu/current/multilib/x86_64-repodata
+#   https://repo.voidlinux.org/current/multilib/x86_64-repodata
 #
-#   https://repo.voidlinux.eu/current/multilib/nonfree/x86_64-repodata
+#   https://repo.voidlinux.org/current/multilib/nonfree/x86_64-repodata
 #   
-#   https://repo.voidlinux.eu/current/aarch64/aarch64-musl-repodata
-#   https://repo.voidlinux.eu/current/aarch64/aarch64-repodata
+#   https://repo.voidlinux.org/current/aarch64/aarch64-musl-repodata
+#   https://repo.voidlinux.org/current/aarch64/aarch64-repodata
 #
-#   https://repo.voidlinux.eu/current/aarch64/nonfree/aarch64-musl-repodata
-#   https://repo.voidlinux.eu/current/aarch64/nonfree/aarch64-repodata
-#   https://repo.voidlinux.eu/current/aarch64/nonfree/x86_64-repodata
+#   https://repo.voidlinux.org/current/aarch64/nonfree/aarch64-musl-repodata
+#   https://repo.voidlinux.org/current/aarch64/nonfree/aarch64-repodata
+#   https://repo.voidlinux.org/current/aarch64/nonfree/x86_64-repodata
 #
-#   https://repo.voidlinux.eu/current/musl/armv6l-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/armv6l-repodata
-#   https://repo.voidlinux.eu/current/musl/armv7l-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/armv7l-repodata
-#   https://repo.voidlinux.eu/current/musl/i686-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/i686-repodata
-#   https://repo.voidlinux.eu/current/musl/x86_64-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/x86_64-repodata
+#   https://repo.voidlinux.org/current/musl/armv6l-musl-repodata
+#   https://repo.voidlinux.org/current/musl/armv6l-repodata
+#   https://repo.voidlinux.org/current/musl/armv7l-musl-repodata
+#   https://repo.voidlinux.org/current/musl/armv7l-repodata
+#   https://repo.voidlinux.org/current/musl/i686-musl-repodata
+#   https://repo.voidlinux.org/current/musl/i686-repodata
+#   https://repo.voidlinux.org/current/musl/x86_64-musl-repodata
+#   https://repo.voidlinux.org/current/musl/x86_64-repodata
 #
-#   https://repo.voidlinux.eu/current/musl/nonfree/armv6l-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/nonfree/armv6l-repodata
-#   https://repo.voidlinux.eu/current/musl/nonfree/armv7l-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/nonfree/armv7l-repodata
-#   https://repo.voidlinux.eu/current/musl/nonfree/i686-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/nonfree/i686-repodata
-#   https://repo.voidlinux.eu/current/musl/nonfree/x86_64-musl-repodata
-#   https://repo.voidlinux.eu/current/musl/nonfree/x86_64-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/armv6l-musl-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/armv6l-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/armv7l-musl-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/armv7l-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/i686-musl-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/i686-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/x86_64-musl-repodata
+#   https://repo.voidlinux.org/current/musl/nonfree/x86_64-repodata
 #
-#   XXX https://repo.voidlinux.eu/current/musl/debug/
-#   XXX https://repo.voidlinux.eu/current/debug/
+#   XXX https://repo.voidlinux.org/current/musl/debug/
+#   XXX https://repo.voidlinux.org/current/debug/
 #
 # tests:
 #
