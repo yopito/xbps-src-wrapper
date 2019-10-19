@@ -1,9 +1,12 @@
 #!/bin/bash
 # 
 # Purpose:
-#  XBPS build package(s) from within a fresh build env for each.
+#  XBPS build package(s) from within a new build env for each.
 #  handle cross-build.
 #
+# XXX 2019-10 subpackage listing is wrong on conditional package(s). possible workaround:
+#             $ echo subpackages | ./xbps-src show-pkg-var  nextcloud-client
+#             nextcloud-client-devel
 # XXX 2019-07 sort-dependencies is now wrong. see how bulk_build() works now
 # XXX dry mode generate logfile(s) anyway
 # XXX logfile: use log/<timestamp>/<pkg>... instead ?
@@ -68,8 +71,7 @@ Usage:
   xbps-src-flags  QUOTE THEM if any (like '-a <arch> [-m <dir>] ...')
   PKG1 PKG2 ...   list of package(s) to build. Retrieve from git if not provided.
 
-  Each package is built one by one in an cleaned masterdir,
-  masterdir is created if not exist,
+  Each package is built one by one in a new masterdir,
   xbps-src options '-C' and '-f' are already in use by this script,
   Packages are built with the right build dependency order,
   If package list is empty, use "git diff master ..." output to retrieve them.
@@ -174,9 +176,12 @@ fi
 
 echo "# implied binary boostrap argument: $BINBOOTSTRAP_ARG"
 
-## first, let's have a clean master dir
-echo # start with a fresh masterdir ..."
-exec_or_dry "./xbps-src $XBPSSRCNOCP zap > /dev/null"
+# don't use xbps-src zap anymore: may left unwanted stuff
+# simply delete masterdir instead
+
+MDIR_TMP="$(./xbps-src show-var XBPS_MASTERDIR | grep -v '^=>' )"
+echo "# start with a new masterdir ($MDIR_TMP)..."
+[ $MDIR_TMP = "" ] || exec_or_dry "rm -rf $MDIR_TMP"
 exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $BINBOOTSTRAP_ARG > /dev/null"
 
 ## retrieve XBPS_TARGET_ARCH value. 
@@ -228,13 +233,14 @@ for pkg in $PKGSU; do
     echo
     logf="log/$ts.$pkg${archsuffix}.log"
 
-    # no need of zap & binary-bootstrap for the first package (already done)
+    # masterdir is already a new one for 1st package (already done)
     if [ $need_fresh_build -eq 0 ]; then
       # will do on next package build
       need_fresh_build=1
     else
-      echo "# [$pkg] clean buildenv and do binary-bootstrap ..."
-      exec_or_dry "./xbps-src $XBPSSRCNOCP zap > /dev/null"
+      echo "# [$pkg] new mastedir and do binary-bootstrap ..."
+      MDIR_TMP="$(./xbps-src show-var XBPS_MASTERDIR | grep -v '^=>' )"
+      [ $MDIR_TMP = "" ] || exec_or_dry "rm -rf $MDIR_TMP"
       exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $BINBOOTSTRAP_ARG > /dev/null"
     fi
 
@@ -243,6 +249,7 @@ for pkg in $PKGSU; do
     exec_or_dry "./xbps-src $XBPSSRCPKGARG -f -C pkg $pkg 2>&1 > $logf"
 
     # subpackages of $pkg
+    # XXX wrong if conditional packages
     spkg=$(find srcpkgs -type l -lname $pkg | sed -e 's,srcpkgs/,,')
     echo "# [$pkg] subpackages: $spkg"
 
