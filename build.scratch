@@ -9,7 +9,6 @@
 #             nextcloud-client-devel
 # XXX 2019-07 sort-dependencies is now wrong. see how bulk_build() works now
 # XXX dry mode generate logfile(s) anyway
-# XXX logfile: use log/<timestamp>/<pkg>... instead ?
 #
 # XXX offline: '-N' option of xbps-src usefull ? not (yet)
 #     Example:
@@ -88,7 +87,7 @@ Usage:
       $0 '-a x86_64-musl'
 
     * check output on long builds in the mean time:
-      $ watch -n 5 "ls -1tr */*.log | tail -n 3 | xargs du -sk && echo && ls -1tr */*.log | tail -n 1 | xargs tail"
+      $ watch -n 5 "ls -1tr */*/*.log | tail -n 3 | xargs du -sk && echo && ls -1tr */*/*.log | tail -n 1 | xargs tail"
 EOFusage
 }
 
@@ -231,7 +230,7 @@ archsuffix="${archsuffix#-a}"
 
 for pkg in $PKGSU; do
     echo
-    logf="log/$ts.$pkg${archsuffix}.log"
+    logf="log/${ts}.${pkg}${archsuffix}/${pkg}.log"
 
     # masterdir is already a new one for 1st package (already done)
     if [ $need_fresh_build -eq 0 ]; then
@@ -246,6 +245,7 @@ for pkg in $PKGSU; do
 
     echo "# [$pkg] let's build ..."
     echo "# [$pkg] logfile: $logf ..."
+    exec_or_dry "mkdir -p $(dirname $(realpath -m $logf))"
     exec_or_dry "./xbps-src $XBPSSRCPKGARG -f -C pkg $pkg 2>&1 > $logf"
 
     # subpackages of $pkg
@@ -254,7 +254,7 @@ for pkg in $PKGSU; do
     echo "# [$pkg] subpackages: $spkg"
 
     for p in $pkg $spkg; do
-      xbinfo="log/$ts.$p${archsuffix}.xbps.info"
+      xbinfo="$(dirname $logf)/$p.xbps.info"
 
       echo "#"
       echo "# [$p] XBPS infos into logfile: $xbinfo ..."
