@@ -4,6 +4,8 @@
 #  XBPS build package(s) from within a fresh build env for each.
 #  handle cross-build.
 #
+# XXX 2019-07 sort-dependencies is now wrong. see how bulk_build() works now
+# XXX dry mode generate logfile(s) anyway
 # XXX logfile: use log/<timestamp>/<pkg>... instead ?
 #
 # XXX offline: '-N' option of xbps-src usefull ? not (yet)
@@ -73,7 +75,7 @@ Usage:
   If package list is empty, use "git diff master ..." output to retrieve them.
   Build output and package(s) infos are generated in a timestamped log files (./log/ folder)
 
-  Don't perform native and cross build with the same hostdir/repocache/ folder
+  Don't perform native and cross builds using the same hostdir/repocache/ folder
 
   Examples:
 
@@ -83,7 +85,7 @@ Usage:
     * cross-build all packages in dev for x86_64-musl: 
       $0 '-a x86_64-musl'
 
-    * check output on massive builds in the mean time:
+    * check output on long builds in the mean time:
       $ watch -n 5 "ls -1tr */*.log | tail -n 3 | xargs du -sk && echo && ls -1tr */*.log | tail -n 1 | xargs tail"
 EOFusage
 }
@@ -179,7 +181,15 @@ exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $BINBOOTSTRAP_ARG > /dev/n
 
 ## retrieve XBPS_TARGET_ARCH value. 
 ## XXX any side-effect for other commands below ?
-[ -n "$XBPSSRCCP" ] && . common/cross-profiles/${XBPSSRCCP}.sh
+if [ -n "$XBPSSRCCP" ]
+then
+  if [ ! -f "common/cross-profiles/${XBPSSRCCP}.sh" ]
+  then
+    echo "[ERROR] '$XBPSSRCCP' is not a cross-arch ? missing file 'common/cross-profiles/${XBPSSRCCP}.sh'"
+    exit 1
+  fi
+  . common/cross-profiles/${XBPSSRCCP}.sh
+fi
 
 ## retrieve local repository to store built packages
 REPO=$( ./xbps-src $XBPSSRCARGS show-var XBPS_REPOSITORY | grep -v '^=>')
@@ -194,19 +204,18 @@ if [ "$PKGS" = "" ]; then
 fi
 echo "# package(s) to consider: $PKGS"
 
-echo "# compute package build order and other needed package builds..."
+echo "# XXX (disabled) compute package build order and other needed package builds..."
 PKGSU=
-for dep in $(./xbps-src $XBPSSRCARGS sort-dependencies $PKGS |
-             sed '1d;s|[<>].*$||g'); do
-		PKGSU="$PKGSU $dep"
-		#echo "[dbg] dep=$dep PKGSU=$PKGSU"
-done
+#for dep in $(./xbps-src $XBPSSRCARGS sort-dependencies $PKGS |
+#             sed '1d;s|[<>].*$||g'); do
+#		PKGSU="$PKGSU $dep"
+#		#echo "[dbg] dep=$dep PKGSU=$PKGSU"
+#done
 
 # if nothing found, let's work on what is requested
 [ "$PKGSU" = "" ] && PKGSU="$PKGS"
 
 echo "# package(s) to build (build ordered): $PKGSU"
-
 
 ## main stuff: loop on each package to build
 
