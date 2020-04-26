@@ -1,5 +1,5 @@
 #!/bin/bash
-# 
+#
 # Purpose:
 #  XBPS build package(s) from within a new build env for each.
 #  handle cross-build.
@@ -7,7 +7,13 @@
 # XXX 2019-10 subpackage listing is wrong on conditional package(s). possible workaround:
 #             $ echo subpackages | ./xbps-src show-pkg-var  nextcloud-client
 #             nextcloud-client-devel
+#
+# XXX support multiple/all target arch(s) with a dedicated arg ?
+#
+# XXX cat template at the beginning of log file ?
+#
 # XXX 2019-07 sort-dependencies is now wrong. see how bulk_build() works now
+#
 # XXX dry mode generate logfile(s) anyway
 #
 # XXX offline: '-N' option of xbps-src usefull ? not (yet)
@@ -24,26 +30,27 @@
 #
 # XXX workflow is broken on noarch packages and cascaded builds
 #     like cross-build that requests native builds
+#     update 2020-04: might be fixed since split of binpkgs repo
 #     Example:
 #       if x86_64 produces *noarch* package libsearpc-codegen, rindex is updated for x86_64.
 #       Then on armv7hf builds, the same noarch package is (re)generated.
-#       Then rindex of armv7l is updated, so rindex of x86_84 becomes out of date: 
+#       Then rindex of armv7l is updated, so rindex of x86_84 becomes out of date:
 #       still references the *old* noarch package.
 #       Becomes a mess if this package is required subsequently (native arch)
 #     => catch this particular case and update rindex instead of building ?
 #     => use separate hostdir for each target arch ?
 #        with symetric layouts like hostdir/repocache/<target_arch>-<libc_flavor>/ instead ?
 #
-# XXX take control of hostdir since binary-bootstrap may fail with other masterdir(s) 
+# XXX take control of hostdir since binary-bootstrap may fail with other masterdir(s)
 #     or while installing cross-build tools ?
 #     Because mixing noarch packages from distinct repo flavor into the same location
 #     hostdir/repocache/ is somewhat stange (see previous point)
 #     ... layout should be hostdir/repocache/<target_arch>-<libc_flavor>/ instead
 #     => temp workaround: delete hostdir/repocache/
-# 
+#
 # XXX 'xbps-query -x <pkg>' returns 2 and not 0 if pkg has no deps (like -doc packages)
 #     see https://github.com/voidlinux/xbps/issues/173
-# 
+#
 # About cross-building: start is different on native arch and target arch:
 #
 #     - if same processor arch, we can use a "native" bootstrap:
@@ -59,7 +66,7 @@
 usage() {
 cat << EOFusage
 
-XBPS bulk builder using a cleaned masterdir for each package build
+xbps-src build wrapper using a fresh masterdir for each package build
 
 Usage:
 
@@ -68,13 +75,13 @@ Usage:
   -n              dry run
   -h              this help
   xbps-src-flags  QUOTE THEM if any (like '-a <arch> [-m <dir>] ...')
-  PKG1 PKG2 ...   list of package(s) to build. Retrieve from git if not provided.
+  PKG1 PKG2 ...   list of package(s) to build. Retrieved from git if not provided.
 
   Each package is built one by one in a new masterdir,
   xbps-src options '-C' and '-f' are already in use by this script,
   Packages are built with the right build dependency order,
-  If package list is empty, use "git diff master ..." output to retrieve them.
-  Build output and package(s) infos are generated in a timestamped log files (./log/ folder)
+  If package list is empty, use "git diff master ..." command to retrieve them.
+  Build output and package(s) infos are stored in a timestamped log files (./log/ folder)
 
   Don't perform native and cross builds using the same hostdir/repocache/ folder
 
@@ -83,11 +90,14 @@ Usage:
     * cross-build librsync for armv7hf:
       $0 '-a armv7hf' librsync
 
-    * cross-build all packages in dev for x86_64-musl: 
+    * cross-build all packages in current git branch for x86_64-musl:
       $0 '-a x86_64-musl'
 
-    * check output on long builds in the mean time:
-      $ watch -n 5 "ls -1tr */*/*.log | tail -n 3 | xargs du -sk && echo && ls -1tr */*/*.log | tail -n 1 | xargs tail"
+    * build GNU libc package from a musl libc host (reuse of '-a <arch>' flag):
+      (x86_64-musl) $0 '-a x86_64' <pkg>
+
+    * check output on build logs in the meantime:
+      $ watch -n 5 "ls -1tr log/*/*.log | tail -n 3 | xargs du -sk && echo && ls -1tr log/*/*.log | tail -n 1 | xargs tail"
 EOFusage
 }
 
@@ -124,12 +134,12 @@ fi
 [ ! -d "log" ] && (echo "creating log/ ..." ; mkdir log )
 
 ## read command-line args
-for pkg; do
-	case $pkg in
+for arg; do
+	case $arg in
 		-n) DRY=1 ;;
 		-h|--help) usage && exit 0 ;;
-		-*) XBPSSRCARGS="$XBPSSRCARGS $pkg";;
-		*) PKGS="$PKGS $pkg"
+		-*) XBPSSRCARGS="$XBPSSRCARGS $arg";;
+		*) PKGS="$PKGS $arg"
 	esac
 done
 
@@ -139,60 +149,86 @@ XBPSSRCARGS="${XBPSSRCARGS# }"
 echo
 echo "# input xbps-src arguments: '$XBPSSRCARGS'"
 
-# split: $XBPSSRCARGS == $XBPSSRCNOCP -a $XBPSSRCCP
+# split: $XBPSSRCARGS == $XBPSSRCNOCP -a $target_platform
 #   XBPSSRCARGS: command-line arguments for xbps-src
 #   ARCHARG    : flag to indicate next arg is the '-a' <arch> (from '-a <arch>')
-#   XBPSSRCCP  : cross-profile to use (from '-a <arch>')
+#   target_platform  : cross-profile to use (from '-a <arch>')
 #   XBPSSRCNOCP: XBPSSRCARGS without cross-profile arg (without '-a <arch>').
-#   BINBOOTSTRAP_ARG: the target arch for xbps-src binary-bootstrap operation. 
-#                       provides it only if target arch is different from native arch.
+#   bootstrap_platform: the target arch for xbps-src binary-bootstrap operation.
+#                       provided if native arch and target arch are different
+#                       or if their libc flavor is different.
 #   XBPSSRCPKGARG:  for use in "xbps-src $XBPSSRCPKGARG pkg" (take care of platform/target arch)
-#   
 
 XBPSSRCNOCP=
-XBPSSRCCP=
+target_platform=
 ARCHARG=no
-BINBOOTSTRAP_ARG=
+bootstrap_platform=
 XBPSSRCPKGARG="$XBPSSRCARGS"
 for o in $XBPSSRCARGS; do
    if [ "$o" = "-a" ]; then
      ARCHARG=yes
    else
      if [ "$ARCHARG" = "yes" ]; then
-       XBPSSRCCP=$o
+       target_platform=$o
        ARCHARG=no
      else
         XBPSSRCNOCP="$XBPSSRCNOCP $o"
      fi
    fi
 done
-echo $XBPSSRCCP | grep $(uname -m)  -q
-if [ $? -eq 0 ] 
+
+# Compute host and target platforms. Need to handle libc flavors.
+# libc are not expressed the same way: '' for GNU libc, 'musl' for musl libc.
+# Crossbuild from -musl arch need a glibc bootstrap if glibc is the target libc:
+# so this wrapper reuses the '-a <target>' argument to manage it.
+#
+# examples:
+#   - h=x86_64-musl t=aarch64     : bstrap=x86_64
+#   - h=x86_64      t=aarch64     : bstrap=x86_64      or empty (same libc)
+#   - h=x86_64      t=aarch64-musl: bstrap=x86_64      or empty (same libc)
+#   - h=x86_64-musl t=aarch64-musl: bstrap=x86_64-musl or empty (same libc)
+#   - h=x86_64-musl t=x86_64      : bstrap=x86_64
+#   - h=x86_64      t=x86_64-musl : bstrap=x86_64
+native_platform=$(xbps-uhelper -C /dev/null arch)
+bootstrap_platform=
+querypkg_platform=$target_platform
+
+if [[ $native_platform == *-musl ]] && [ -n "$target_platform" ]
 then
-    BINBOOTSTRAP_ARG="$XBPSSRCCP"
-    XBPSSRCPKGARG="$XBPSSRCNOCP"
+  if [[ $target_platform == *-musl ]]
+  then
+    bootstrap_platform=$native_platform
+  else
+    bootstrap_platform=$(uname -m)
+  fi
+fi
+# special case: remove cross-arch argument since handled by bootstrap arch/libc
+if [[ $bootstrap_platform == $target_platform ]]
+then
+  ARCHARGS=no
+  target_platform=
+  XBPSSRCPKGARG="$XBPSSRCNOCP"
+  querypkg_platform=$bootstrap_platform
 fi
 
-echo "# implied binary boostrap argument: $BINBOOTSTRAP_ARG"
+echo "# implied binary bootstrap argument: $bootstrap_platform"
 
-# don't use xbps-src zap anymore: may left unwanted stuff
+# don't use 'xbps-src zap' anymore: may left unwanted stuff
 # simply delete masterdir instead
 
 MDIR_TMP="$(./xbps-src show-var XBPS_MASTERDIR | grep -v '^=>' )"
 echo "# start with a new masterdir ($MDIR_TMP)..."
 [ $MDIR_TMP = "" ] || exec_or_dry "rm -rf $MDIR_TMP"
-exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $BINBOOTSTRAP_ARG > /dev/null"
+exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $bootstrap_platform > /dev/null"
 
-## retrieve XBPS_TARGET_ARCH value. 
-## XXX any side-effect for other commands below ?
-if [ -n "$XBPSSRCCP" ]
+# Check target platform is known
+if [ -n "$target_platform" ]
 then
-  if [ ! -f "common/cross-profiles/${XBPSSRCCP}.sh" ]
+  if [ ! -f "common/cross-profiles/${target_platform}.sh" ]
   then
-    echo "[ERROR] '$XBPSSRCCP' is not a cross-arch ? missing file 'common/cross-profiles/${XBPSSRCCP}.sh'"
+    echo "[ERROR] '$target_platform' is not a cross-arch ? missing file 'common/cross-profiles/${target_platform}.sh'"
     exit 1
   fi
-  . common/cross-profiles/${XBPSSRCCP}.sh
 fi
 
 ## retrieve local repository to store built packages
@@ -200,9 +236,9 @@ REPO=$( ./xbps-src $XBPSSRCARGS show-var XBPS_REPOSITORY | grep -v '^=>')
 
 ## if no package list provided, compute it from git against the master branch
 if [ "$PKGS" = "" ]; then
-  echo "# input: no package given: retrieve a list from git..."
-  PKGS=$(git diff master --name-only --diff-filter=AM | 
-              grep -F "/template" | 
+  echo "# input: no given package: retrieve list against git master branch..."
+  PKGS=$(git diff master --name-only --diff-filter=AM |
+              grep -F "/template" |
               sed -e 's,srcpkgs/\(.*\)/template,\1,' |
               tr '\n' ' ')
 fi
@@ -240,7 +276,7 @@ for pkg in $PKGSU; do
       echo "# [$pkg] new mastedir and do binary-bootstrap ..."
       MDIR_TMP="$(./xbps-src show-var XBPS_MASTERDIR | grep -v '^=>' )"
       [ $MDIR_TMP = "" ] || exec_or_dry "rm -rf $MDIR_TMP"
-      exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $BINBOOTSTRAP_ARG > /dev/null"
+      exec_or_dry "./xbps-src $XBPSSRCNOCP binary-bootstrap $bootstrap_platform > /dev/null"
     fi
 
     echo "# [$pkg] let's build ..."
@@ -259,7 +295,7 @@ for pkg in $PKGSU; do
       echo "#"
       echo "# [$p] XBPS infos into logfile: $xbinfo ..."
       XBPSQ="xbps-query -R -i --repository=$REPO"
-      [ -n "$XBPS_TARGET_MACHINE" ] && XBPSQ="XBPS_TARGET_ARCH=$XBPS_TARGET_MACHINE $XBPSQ"
+      [ -n "$querypkg_platform" ] && XBPSQ="XBPS_TARGET_ARCH=$querypkg_platform $XBPSQ"
 
       echo "# package information:" >> $xbinfo
       exec_or_dry "$XBPSQ -S $p >> $xbinfo"
