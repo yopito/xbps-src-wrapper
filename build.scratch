@@ -4,11 +4,13 @@
 #  XBPS build package(s) from within a new build env for each.
 #  handle cross-build.
 #
-# XXX 2019-10 subpackage listing is wrong on conditional package(s). possible workaround:
-#             $ echo subpackages | ./xbps-src show-pkg-var  nextcloud-client
-#             nextcloud-client-devel
+# XXX .dbg packages are not built
 #
-# XXX support multiple/all target arch(s) with a dedicated arg ?
+# XXX subpackage listing is wrong on conditional package(s). possible workaround:
+#       $ echo subpackages | ./xbps-src show-pkg-var  nextcloud-client
+#       nextcloud-client-devel
+#
+# XXX support multiple/all targets arch. via multiple -a arguments ?
 #
 # XXX cat template at the beginning of log file ?
 #
@@ -48,9 +50,6 @@
 #     ... layout should be hostdir/repocache/<target_arch>-<libc_flavor>/ instead
 #     => temp workaround: delete hostdir/repocache/
 #
-# XXX 'xbps-query -x <pkg>' returns 2 and not 0 if pkg has no deps (like -doc packages)
-#     see https://github.com/voidlinux/xbps/issues/173
-#
 # About cross-building: start is different on native arch and target arch:
 #
 #     - if same processor arch, we can use a "native" bootstrap:
@@ -80,7 +79,7 @@ Usage:
   Each package is built one by one in a new masterdir,
   xbps-src options '-C' and '-f' are already in use by this script,
   Packages are built with the right build dependency order,
-  If package list is empty, use "git diff master ..." command to retrieve them.
+  If package list is empty, retrieve it from command "git diff master ...".
   Build output and package(s) infos are stored in a timestamped log files (./log/ folder)
 
   Don't perform native and cross builds using the same hostdir/repocache/ folder
@@ -266,7 +265,8 @@ archsuffix="${archsuffix#-a}"
 
 for pkg in $PKGSU; do
     echo
-    logf="log/${ts}.${pkg}${archsuffix}/${pkg}.log"
+    logdir="log/${ts}.${pkg}${archsuffix}"
+    logf="${logdir}/${pkg}.log"
 
     # masterdir is already a new one for 1st package (already done)
     if [ $need_fresh_build -eq 0 ]; then
@@ -290,7 +290,7 @@ for pkg in $PKGSU; do
     echo "# [$pkg] subpackages: $spkg"
 
     for p in $pkg $spkg; do
-      xbinfo="$(dirname $logf)/$p.xbps.info"
+      xbinfo="${logdir}/$p.xbps.info"
 
       echo "#"
       echo "# [$p] XBPS infos into logfile: $xbinfo ..."
@@ -301,8 +301,7 @@ for pkg in $PKGSU; do
       exec_or_dry "$XBPSQ -S $p >> $xbinfo"
 
       echo "# package dependencies (sorted):" >> $xbinfo
-      # XXX return 2 and not 0 if no deps
-      exec_or_dry "$XBPSQ -x $p | sort >> $xbinfo" no_exit
+      exec_or_dry "$XBPSQ -x $p | sort >> $xbinfo"
 
       echo "# package files (sorted):" >> $xbinfo
       exec_or_dry "$XBPSQ -f $p | sort >> $xbinfo"
