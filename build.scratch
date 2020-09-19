@@ -4,12 +4,17 @@
 #  XBPS build package(s) from within a new build env for each.
 #  handle cross-build.
 #
+# XXX check: separate is currently disabled (see below)
+#            => have to use '-Q' flag from command line or enabling XBPS_CHECKS_PKGS
+#
+# XXX check: generally speaking, upstream self tests are designed to be run
+#            BEFORE install is performed. If we want to separate regular build
+#            from tests, have to wipe completely first.
+#
 # XXX check: (re)use -Q flag to enable/disable it ?
 #
 # XXX check: normal build should run without any check implication (like depends),
 #            meaning handling XBPS_CHECK_PKGS too.
-#
-# XXX check: should rebuild from scratch instead of just configure (pre)phase ?
 #
 # XXX .dbg packages are not built
 #
@@ -88,7 +93,7 @@ Usage:
   Packages are built with the right build dependency order,
   If package list is empty, retrieve it from command "git diff master ...".
   Build output and package(s) infos are stored in a timestamped log files (./log/ folder)
-  Tests/checks are performed after build and packaging phase contrary to xbps-src.
+  #Tests/checks are performed after build and packaging phase contrary to xbps-src.
 
   Don't perform native and cross builds using the same hostdir/repocache/ folder
 
@@ -316,12 +321,14 @@ for pkg in $PKGSU; do
       exec_or_dry "$XBPSQ -f $p | sort >> $xbinfo"
     done
    
-    # check: avoid interfering with building/packaging, so let's enable it now.
-    #        Need to run configure again.
-    #        Don't check return code to keep on build next packages.
-    echo "# [$pkg] run internal tests (do_check()) ..." 
-    exec_or_dry "( ./xbps-src $XBPSSRCPKGARG -Q -f -C configure $pkg ) 2>&1 >  ${logdir}/${pkg}.check.log" no_exit
-    exec_or_dry "( ./xbps-src $XBPSSRCPKGARG -Q -f -C check     $pkg ) 2>&1 >> ${logdir}/${pkg}.check.log" no_exit
+    # XXX check: still trouble. disabling this separate run for now
+    #
+    ## check: avoid interfering with building/packaging, so let's enable it now.
+    ##        Need to run configure again.
+    ##        Don't check return code to keep on build next packages.
+    #echo "# [$pkg] run internal tests (do_check()) ..." 
+    #exec_or_dry "( ./xbps-src $XBPSSRCPKGARG -Q -f -C configure $pkg ) 2>&1 >  ${logdir}/${pkg}.check.log" no_exit
+    #exec_or_dry "( ./xbps-src $XBPSSRCPKGARG -Q -f -C check     $pkg ) 2>&1 >> ${logdir}/${pkg}.check.log" no_exit
 
 done
 
