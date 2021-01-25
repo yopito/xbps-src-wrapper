@@ -4,25 +4,13 @@
 #  XBPS build package(s) from within a new build env for each.
 #  handle cross-build.
 #
-# XXX check: separate is currently disabled (see below)
-#            => have to use '-Q' flag from command line or enabling XBPS_CHECKS_PKGS
-#
-# XXX check: generally speaking, upstream self tests are designed to be run
-#            BEFORE install is performed. If we want to separate regular build
-#            from tests, have to wipe completely first.
-#
-# XXX check: (re)use -Q flag to enable/disable it ?
-#
-# XXX check: normal build should run without any check implication (like depends),
-#            meaning handling XBPS_CHECK_PKGS too.
-#
 # XXX .dbg packages are not built
 #
 # XXX subpackage listing is wrong on conditional package(s). possible workaround:
 #       $ echo subpackages | ./xbps-src show-pkg-var  nextcloud-client
 #       nextcloud-client-devel
 #
-# XXX support multiple/all targets arch. via multiple -a arguments ?
+# XXX support several targets arch. via multiple -a arguments ?
 #
 # XXX cat template at the beginning of log file ?
 #
@@ -30,7 +18,7 @@
 #
 # XXX dry mode generate logfile(s) anyway
 #
-# XXX offline: '-N' option of xbps-src usefull ? not (yet)
+# XXX offline support: '-N' option of xbps-src usefull ? not (yet)
 #     Example:
 #       $ ./build.scratch '-N' burp2-server
 #       # input xbps-src arguments: '-N'
@@ -41,26 +29,6 @@
 #       => ERROR: Failed to install bootstrap packages!
 #       # ERROR on cmd.
 #       # exiting requested: stop here
-#
-# XXX workflow is broken on noarch packages and cascaded builds
-#     like cross-build that requests native builds
-#     update 2020-04: might be fixed since split of binpkgs repo
-#     Example:
-#       if x86_64 produces *noarch* package libsearpc-codegen, rindex is updated for x86_64.
-#       Then on armv7hf builds, the same noarch package is (re)generated.
-#       Then rindex of armv7l is updated, so rindex of x86_84 becomes out of date:
-#       still references the *old* noarch package.
-#       Becomes a mess if this package is required subsequently (native arch)
-#     => catch this particular case and update rindex instead of building ?
-#     => use separate hostdir for each target arch ?
-#        with symetric layouts like hostdir/repocache/<target_arch>-<libc_flavor>/ instead ?
-#
-# XXX take control of hostdir since binary-bootstrap may fail with other masterdir(s)
-#     or while installing cross-build tools ?
-#     Because mixing noarch packages from distinct repo flavor into the same location
-#     hostdir/repocache/ is somewhat stange (see previous point)
-#     ... layout should be hostdir/repocache/<target_arch>-<libc_flavor>/ instead
-#     => temp workaround: delete hostdir/repocache/
 #
 # About cross-building: start is different on native arch and target arch:
 #
@@ -201,20 +169,28 @@ done
 #   - h=x86_64-musl t=aarch64-musl: bstrap=x86_64-musl or empty (same libc)
 #   - h=x86_64-musl t=x86_64      : bstrap=x86_64
 #   - h=x86_64      t=x86_64-musl : bstrap=x86_64
+#   - h=x86_64      t=i686-musl   : bstrap=i686-musl
+
 native_platform=$(xbps-uhelper -C /dev/null arch)
 bootstrap_platform=
 querypkg_platform=$target_platform
 
-if [[ $native_platform == *-musl ]] && [ -n "$target_platform" ]
+# compute bootstrap platform: same than host, modulo libc flavor
+if [ -n "$target_platform" ]
 then
-  if [[ $target_platform == *-musl ]]
+  # specific case: subarch
+  if [[ $native_platform == x86_64* ]] && [[ $target_platform == i686* ]]
+  then
+    bootstrap_platform=$target_platform
+  elif [[ $native_platform == *-musl ]] && [[ $target_platform == *-musl ]]
   then
     bootstrap_platform=$native_platform
   else
     bootstrap_platform=$(uname -m)
   fi
 fi
-# special case: remove cross-arch argument since handled by bootstrap arch/libc
+
+# special cases: remove cross-arch argument since handled by bootstrap arch/libc
 if [[ $bootstrap_platform == $target_platform ]]
 then
   ARCHARGS=no
@@ -224,7 +200,6 @@ then
 fi
 
 echo "# implied binary bootstrap argument: $bootstrap_platform"
-
 # don't use 'xbps-src zap' anymore: may left unwanted stuff
 # simply delete masterdir instead
 
@@ -321,15 +296,6 @@ for pkg in $PKGSU; do
       exec_or_dry "$XBPSQ -f $p | sort >> $xbinfo"
     done
    
-    # XXX check: still trouble. disabling this separate run for now
-    #
-    ## check: avoid interfering with building/packaging, so let's enable it now.
-    ##        Need to run configure again.
-    ##        Don't check return code to keep on build next packages.
-    #echo "# [$pkg] run internal tests (do_check()) ..." 
-    #exec_or_dry "( ./xbps-src $XBPSSRCPKGARG -Q -f -C configure $pkg ) 2>&1 >  ${logdir}/${pkg}.check.log" no_exit
-    #exec_or_dry "( ./xbps-src $XBPSSRCPKGARG -Q -f -C check     $pkg ) 2>&1 >> ${logdir}/${pkg}.check.log" no_exit
-
 done
 
 echo "# That's all folks !"
